@@ -1,0 +1,65 @@
+name: AC probe legit-2
+run-name: AC probe legit-2 (${{ github.event.action }})
+
+on:
+  pull_request:
+    branches:
+      - release
+    types: [opened, synchronize, reopened, edited, closed]
+
+permissions: {}
+
+jobs:
+  probe:
+    name: Report GITHUB_REF and the cache token ac claim
+    if: github.repository == '0paidenterprise/ac-ff'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Report run identity
+        shell: bash
+        run: |
+          echo "PROBE_EVENT_ACTION=${{ github.event.action }}"
+          echo "PROBE_GITHUB_REF=${GITHUB_REF}"
+          echo "PROBE_GITHUB_REF_NAME=${GITHUB_REF_NAME}"
+          echo "PROBE_GITHUB_SHA=${GITHUB_SHA}"
+          echo "PROBE_GITHUB_BASE_REF=${GITHUB_BASE_REF}"
+          echo "PROBE_GITHUB_HEAD_REF=${GITHUB_HEAD_REF}"
+          echo "PROBE_PR_MERGED=${{ github.event.pull_request.merged }}"
+          echo "PROBE_PR_STATE=${{ github.event.pull_request.state }}"
+          echo "PROBE_PR_MERGE_COMMIT_SHA=${{ github.event.pull_request.merge_commit_sha }}"
+          echo "PROBE_PR_HEAD_SHA=${{ github.event.pull_request.head.sha }}"
+          echo "PROBE_PR_HEAD_REPO=${{ github.event.pull_request.head.repo.full_name }}"
+          echo "PROBE_PR_BASE_SHA=${{ github.event.pull_request.base.sha }}"
+
+      - name: Report the runtime cache token ac claim
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
+        with:
+          script: |
+            const token = process.env.ACTIONS_RUNTIME_TOKEN
+            if (!token) { core.info('PROBE_AC_CLAIM=<no ACTIONS_RUNTIME_TOKEN>'); return }
+            // Only the authorization claims are printed -- never the token itself.
+            const payload = JSON.parse(
+              Buffer.from(token.split('.')[1], 'base64url').toString('utf8'))
+            const ac = typeof payload.ac === 'string' ? JSON.parse(payload.ac) : payload.ac
+            core.info('PROBE_AC_CLAIM=' + JSON.stringify(ac))
+            core.info('PROBE_AC_SCP=' + JSON.stringify(payload.scp ?? null))
+
+      - name: Stage a cache payload
+        shell: bash
+        run: |
+          mkdir -p ".probe-payload"
+          printf 'probe legit-2 %s\n' "${GITHUB_REF}" > ".probe-payload/marker.txt"
+
+      - name: Attempt a cache save under the base branch namespace
+        id: save
+        continue-on-error: true
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .probe-payload
+          key: probe-cache-legit-2
+          enableCrossOsArchive: false
+
+      - name: Report the cache save outcome
+        shell: bash
+        run: echo "PROBE_CACHE_SAVE_OUTCOME=${{ steps.save.outcome }}"
